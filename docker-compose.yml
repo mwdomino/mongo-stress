@@ -1,0 +1,75 @@
+version: '3.8'
+services:
+  mongo1:
+    image: mongo:latest
+    container_name: mongo1
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo1data:/data/db
+    command: mongod --replSet rs0 --bind_ip_all
+    networks:
+      - mongo-cluster
+
+  mongo2:
+    image: mongo:latest
+    container_name: mongo2
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo2data:/data/db
+    command: mongod --replSet rs0 --bind_ip_all
+    networks:
+      - mongo-cluster
+
+  mongo3:
+    image: mongo:latest
+    container_name: mongo3
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongo3data:/data/db
+    command: mongod --replSet rs0 --bind_ip_all
+    networks:
+      - mongo-cluster
+
+  mongo-setup:
+    image: mongo:latest
+    container_name: mongo-setup
+    depends_on:
+      - mongo1
+      - mongo2
+      - mongo3
+    command: >
+      bash -c "echo 'Waiting for MongoDB nodes to start...' && sleep 10 &&
+             mongosh --host mongo1 --eval '
+               rs.initiate({
+                 _id: \"rs0\",
+                 members: [
+                   { _id: 0, host: \"mongo1:27017\" },
+                   { _id: 1, host: \"mongo2:27017\" },
+                   { _id: 2, host: \"mongo3:27017\" }
+                 ]
+               })
+             ' && echo 'MongoDB Replica Set configured!'"
+    networks:
+      - mongo-cluster
+
+  app:
+    build: ./app
+    container_name: app
+    depends_on:
+      - mongo-setup
+    environment:
+      MONGO_URI: "mongodb://mongo1:27017,mongo2:27017,mongo3:27017/?replicaSet=rs0&retryWrites=true"
+    networks:
+      - mongo-cluster
+
+networks:
+  mongo-cluster:
+    driver: bridge
+
+volumes:
+  mongo1data:
+  mongo2data:
+  mongo3data:
